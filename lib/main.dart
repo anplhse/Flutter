@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'themes/app_theme.dart';
 import 'constants/app_strings.dart';
-import 'screens/home_screen.dart';
+import 'widgets/bottom_navigation_widget.dart';
 
 void main() {
   runApp(const MuseumApp());
@@ -15,7 +15,7 @@ class MuseumApp extends StatelessWidget {
     return MaterialApp(
       title: AppStrings.appName,
       theme: AppTheme.lightTheme,
-      home: const HomeScreen(),
+      home: const BottomNavigationWidget(),
       debugShowCheckedModeBanner: false,
     );
   }

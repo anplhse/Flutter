@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/qr_scanner_service.dart';
 import '../services/museum_service.dart';
 import 'artifact_detail_screen.dart';
+import '../utils/app_utils.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
@@ -13,137 +14,57 @@ class QRScannerScreen extends StatefulWidget {
 class _QRScannerScreenState extends State<QRScannerScreen> {
   bool isProcessing = false;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quét mã QR'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Colors.white,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Icon QR code lớn
-            Icon(
-              Icons.qr_code_scanner,
-              size: 120,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 32),
-
-            // Tiêu đề
-            const Text(
-              'Quét mã QR hiện vật',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Mô tả
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Nhấn nút bên dưới để mở camera và quét mã QR trên hiện vật để xem thông tin chi tiết',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-            const SizedBox(height: 48),
-
-            // Nút quét QR
-            if (!isProcessing)
-              ElevatedButton.icon(
-                onPressed: _scanQRCode,
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Quét mã QR'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  textStyle: const TextStyle(fontSize: 18),
-                ),
-              )
-            else
-              // Loading indicator khi đang xử lý
-              const Column(
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    'Đang tải thông tin hiện vật...',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-
-            const SizedBox(height: 32),
-
-            // Hướng dẫn
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue[700]),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Hướng dẫn sử dụng',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[700],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '• Tìm mã QR trên biển thông tin hiện vật\n'
-                    '• Nhấn "Quét mã QR" để mở camera\n'
-                    '• Hướng camera về phía mã QR\n'
-                    '• Chờ ứng dụng tự động nhận diện',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _scanQRCode() async {
+    if (isProcessing) return;
+
     setState(() {
       isProcessing = true;
     });
 
     try {
-      // Gọi service để quét QR code với BuildContext
-      final String? qrData = await QRScannerService.scanQRCode(context);
+      final result = await QRScannerService.scanQRCode(context);
 
-      if (qrData != null && qrData.isNotEmpty) {
-        await _processQRCode(qrData);
-      } else {
-        // Người dùng hủy quét hoặc không quét được
-        _showMessage('Quét mã QR bị hủy');
+      if (result != null && mounted) {
+        if (QRScannerService.isValidQRCode(result)) {
+          final artifactId = QRScannerService.extractArtifactId(result);
+
+          // Lấy thông tin hiện vật từ service
+          final artifact = await MuseumService.getArtifactById(artifactId);
+
+          if (artifact != null && mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ArtifactDetailScreen(artifact: artifact),
+              ),
+            );
+          } else {
+            if (mounted) {
+              AppUtils.showSnackBar(
+                context,
+                'Không tìm thấy thông tin hiện vật với mã: $artifactId',
+                isError: true,
+              );
+            }
+          }
+        } else {
+          if (mounted) {
+            AppUtils.showSnackBar(
+              context,
+              'Mã QR không hợp lệ. Vui lòng quét mã QR của hiện vật trong bảo tàng.',
+              isError: true,
+            );
+          }
+        }
       }
     } catch (e) {
-      _showErrorDialog('Lỗi', 'Có lỗi xảy ra khi quét mã QR: $e');
+      if (mounted) {
+        AppUtils.showSnackBar(
+          context,
+          'Lỗi khi quét mã QR: $e',
+          isError: true,
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -153,76 +74,121 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     }
   }
 
-  Future<void> _processQRCode(String qrData) async {
-    try {
-      // Validate QR code format
-      if (!QRScannerService.isValidQRCode(qrData)) {
-        _showErrorDialog('Mã QR không hợp lệ',
-            'Đây không phải là mã QR của hiện vật bảo tàng.\n\nMã QR: $qrData');
-        return;
-      }
-
-      // Extract artifact ID from QR data
-      final String artifactId = QRScannerService.extractArtifactId(qrData);
-
-      // Get artifact details from service
-      final artifact = await MuseumService.getArtifactById(artifactId);
-
-      if (artifact != null) {
-        // Navigate to artifact detail screen
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => ArtifactDetailScreen(artifact: artifact),
-            ),
-          );
-        }
-      } else {
-        _showErrorDialog('Không tìm thấy hiện vật',
-            'Hiện vật có ID "$artifactId" không tồn tại trong hệ thống.');
-      }
-    } catch (e) {
-      _showErrorDialog('Lỗi', 'Có lỗi xảy ra khi tải thông tin hiện vật: $e');
-    }
-  }
-
-  void _showMessage(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  void _showErrorDialog(String title, String message) {
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Đóng'),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Quét mã QR'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Icon QR code lớn
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  Icons.qr_code_scanner,
+                  size: 120,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _scanQRCode(); // Thử quét lại
-                },
-                child: const Text('Quét lại'),
+              const SizedBox(height: 32),
+
+              // Tiêu đề
+              const Text(
+                'Quét mã QR hiện vật',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+
+              // Mô tả
+              Text(
+                'Nhấn nút bên dưới để mở camera và quét mã QR trên hiện vật để xem thông tin chi tiết',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 48),
+
+              // Nút quét QR
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: isProcessing ? null : _scanQRCode,
+                  icon: isProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.qr_code_scanner),
+                  label: Text(
+                    isProcessing ? 'Đang xử lý...' : 'Bắt đầu quét QR',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Hướng dẫn
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.blue[700],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Mã QR có thể được tìm thấy trên biển hiệu bên cạnh mỗi hiện vật trong bảo tàng',
+                        style: TextStyle(
+                          color: Colors.blue[700],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
-          );
-        },
-      );
-    }
+          ),
+        ),
+      ),
+    );
   }
 }

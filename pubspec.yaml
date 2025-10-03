@@ -50,6 +50,9 @@ dependencies:
   # Permission handling
   permission_handler: ^11.1.0
 
+  # Bottom navigation
+  persistent_bottom_nav_bar: ^5.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
