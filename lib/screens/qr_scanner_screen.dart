@@ -26,10 +26,11 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
       if (result != null && mounted) {
         if (QRScannerService.isValidQRCode(result)) {
-          final artifactId = QRScannerService.extractArtifactId(result);
+          final artifactCode = QRScannerService.extractArtifactId(result);
 
-          // Lấy thông tin hiện vật từ service
-          final artifact = await MuseumService.getArtifactById(artifactId);
+          // Lấy thông tin hiện vật từ code (API thật hoặc mock)
+          final artifact = await MuseumService.getMockArtifactByCode(artifactCode);
+          // Khi có API thật, dùng: await MuseumService.getArtifactByCode(artifactCode);
 
           if (artifact != null && mounted) {
             Navigator.push(
@@ -42,7 +43,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             if (mounted) {
               AppUtils.showSnackBar(
                 context,
-                'Không tìm thấy thông tin hiện vật với mã: $artifactId',
+                'Không tìm thấy thông tin hiện vật với mã: $artifactCode',
                 isError: true,
               );
             }

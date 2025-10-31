@@ -182,6 +182,24 @@ class ArtifactDetailScreen extends StatelessWidget {
                           label: 'Vị trí trưng bày:',
                           value: artifact.location,
                         ),
+                        if (artifact.area != null) ...[
+                          const SizedBox(height: 8),
+                          _buildDetailRow(
+                            context,
+                            icon: Icons.place,
+                            label: 'Khu vực:',
+                            value: artifact.area!,
+                          ),
+                        ],
+                        if (artifact.displayPosition != null) ...[
+                          const SizedBox(height: 8),
+                          _buildDetailRow(
+                            context,
+                            icon: Icons.location_on,
+                            label: 'Vị trí cụ thể:',
+                            value: artifact.displayPosition!,
+                          ),
+                        ],
                       ],
                     ),
                   ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
+import '../screens/museums_list_screen.dart';
 import '../screens/artifacts_list_screen.dart';
 import '../screens/qr_scanner_screen.dart';
 import '../screens/search_screen.dart';
@@ -16,6 +17,7 @@ class _BottomNavigationWidgetState extends State<BottomNavigationWidget> {
 
   final List<Widget> _screens = [
     const HomeScreen(),
+    const MuseumsListScreen(),
     const ArtifactsListScreen(),
     const QRScannerScreen(),
     const SearchScreen(),
@@ -38,10 +40,16 @@ class _BottomNavigationWidgetState extends State<BottomNavigationWidget> {
         },
         selectedItemColor: Theme.of(context).primaryColor,
         unselectedItemColor: Colors.grey,
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
             label: 'Trang chủ',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance),
+            label: 'Bảo tàng',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.museum),
