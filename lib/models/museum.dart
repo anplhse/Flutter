@@ -1,48 +1,25 @@
 class Museum {
   final String id;
   final String name;
+  final String location;
   final String description;
-  final String address;
-  final String imageUrl;
-  final String phone;
-  final String email;
-  final String openingHours;
-  final double latitude;
-  final double longitude;
-  final List<String> tags;
-  final DateTime createdAt;
+  final String status;
 
   Museum({
     required this.id,
     required this.name,
+    required this.location,
     required this.description,
-    required this.address,
-    required this.imageUrl,
-    required this.phone,
-    required this.email,
-    required this.openingHours,
-    required this.latitude,
-    required this.longitude,
-    required this.tags,
-    required this.createdAt,
+    required this.status,
   });
 
   factory Museum.fromJson(Map<String, dynamic> json) {
     return Museum(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
+      location: json['location'] ?? '',
       description: json['description'] ?? '',
-      address: json['address'] ?? '',
-      imageUrl: json['imageUrl'] ?? '',
-      phone: json['phone'] ?? '',
-      email: json['email'] ?? '',
-      openingHours: json['openingHours'] ?? '',
-      latitude: (json['latitude'] ?? 0.0).toDouble(),
-      longitude: (json['longitude'] ?? 0.0).toDouble(),
-      tags: List<String>.from(json['tags'] ?? []),
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
+      status: json['status'] ?? 'Active',
     );
   }
 
@@ -50,17 +27,12 @@ class Museum {
     return {
       'id': id,
       'name': name,
+      'location': location,
       'description': description,
-      'address': address,
-      'imageUrl': imageUrl,
-      'phone': phone,
-      'email': email,
-      'openingHours': openingHours,
-      'latitude': latitude,
-      'longitude': longitude,
-      'tags': tags,
-      'createdAt': createdAt.toIso8601String(),
+      'status': status,
     };
   }
+
+  bool get isActive => status == 'Active';
 }
 

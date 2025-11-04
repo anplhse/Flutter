@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/qr_scanner_service.dart';
+import '../services/auth_service.dart';
 import 'qr_scanner_screen.dart';
-import 'artifacts_list_screen.dart';
+import 'all_artifacts_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -9,12 +10,32 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authService = AuthService();
+    final username = authService.currentVisitor?.username ?? 'Visitor';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bảo Tàng Việt Nam'),
+        title: const Text('Hệ Thống Bảo Tàng'),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Center(
+              child: Row(
+                children: [
+                  Icon(Icons.person, size: 20),
+                  SizedBox(width: 4),
+                  Text(
+                    username,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -35,9 +56,9 @@ class HomeScreen extends StatelessWidget {
               children: [
                 const SizedBox(height: 20),
 
-                // Welcome text
+                // Welcome text with username
                 Text(
-                  'Chào mừng đến với Bảo Tàng!',
+                  'Xin chào, $username!',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.primary,
@@ -48,7 +69,7 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 10),
 
                 Text(
-                  'Quét mã QR để khám phá thông tin chi tiết về các hiện vật',
+                  'Khám phá bảo tàng và hiện vật ngay hôm nay',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: Colors.grey[600],
                   ),
@@ -227,7 +248,9 @@ class HomeScreen extends StatelessWidget {
   void _navigateToArtifactsList(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const ArtifactsListScreen()),
+      MaterialPageRoute(
+        builder: (context) => const AllArtifactsScreen(),
+      ),
     );
   }
 

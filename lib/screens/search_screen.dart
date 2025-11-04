@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/artifact.dart';
-import '../services/museum_service.dart';
 import 'artifact_detail_screen.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -39,35 +40,28 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      // Mock search - trong thực tế sẽ gọi API
-      await Future.delayed(const Duration(milliseconds: 800)); // Giả lập độ trễ API
+      final response = await http.get(
+        Uri.parse('https://museum-system-api-160202770359.asia-southeast1.run.app/api/v1/artifacts?search=$query&pageIndex=1&pageSize=10'),
+      );
 
-      final allArtifacts = [
-        await MuseumService.getMockArtifact('AR001'),
-        await MuseumService.getMockArtifact('AR002'),
-        await MuseumService.getMockArtifact('AR003'),
-      ];
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> items = data['data']['items'];
+        final results = items.map((item) => Artifact.fromJson(item)).toList();
 
-      final results = allArtifacts
-          .where((artifact) => artifact != null)
-          .cast<Artifact>()
-          .where((artifact) {
-            final queryLower = query.toLowerCase();
-            return artifact.name.toLowerCase().contains(queryLower) ||
-                   artifact.description.toLowerCase().contains(queryLower) ||
-                   artifact.category.toLowerCase().contains(queryLower) ||
-                   artifact.period.toLowerCase().contains(queryLower) ||
-                   artifact.origin.toLowerCase().contains(queryLower) ||
-                   artifact.tags.any((tag) => tag.toLowerCase().contains(queryLower));
-          })
-          .toList();
-
-      setState(() {
-        searchResults = results;
-        hasSearched = true;
-      });
+        setState(() {
+          searchResults = results;
+          hasSearched = true;
+        });
+      } else {
+        debugPrint('Failed to search artifacts: ${response.statusCode}');
+        setState(() {
+          searchResults = [];
+          hasSearched = true;
+        });
+      }
     } catch (e) {
-      debugPrint('Error searching: $e');
+      debugPrint('Error searching artifacts: $e');
       setState(() {
         searchResults = [];
         hasSearched = true;
@@ -96,7 +90,7 @@ class _SearchScreenState extends State<SearchScreen> {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
+                  color: Colors.grey.withValues(alpha: 0.1),
                   spreadRadius: 1,
                   blurRadius: 3,
                   offset: const Offset(0, 1),
@@ -388,8 +382,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                           ),
                           child: Text(
                             artifact.category,

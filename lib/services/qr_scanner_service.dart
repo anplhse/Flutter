@@ -31,6 +31,9 @@ class QRScannerService {
         return null;
       }
 
+      // Check if context is still mounted before using it
+      if (!context.mounted) return null;
+
       // Sử dụng Navigator để mở màn hình AiBarcodeScanner
       final String? result = await Navigator.of(context).push(
         MaterialPageRoute(
@@ -67,20 +70,21 @@ class QRScannerService {
     if (qrData.isEmpty) return false;
 
     // Check various QR formats
-    return qrData.startsWith('MUSEUM:') ||
+    return qrData.startsWith('ARTIFACT:') ||
+        qrData.startsWith('MUSEUM:') ||
         qrData.contains('/artifact/') ||
-        RegExp(r'^AR\d{3}$').hasMatch(qrData);
+        RegExp(r'^[A-Z]{3}-ART-\d{4}-\d{14}$').hasMatch(qrData);
   }
 
-  // Extract artifact ID from QR data
+  // Extract artifact code from QR data
   static String extractArtifactId(String qrData) {
-    if (qrData.startsWith('MUSEUM:')) {
+    if (qrData.startsWith('ARTIFACT:')) {
+      return qrData.substring(9); // Remove "ARTIFACT:" prefix
+    } else if (qrData.startsWith('MUSEUM:')) {
       return qrData.substring(7); // Remove "MUSEUM:" prefix
     } else if (qrData.contains('/artifact/')) {
       final parts = qrData.split('/artifact/');
       return parts.length > 1 ? parts[1] : qrData;
-    } else if (RegExp(r'^AR\d{3}$').hasMatch(qrData)) {
-      return qrData;
     }
     return qrData;
   }

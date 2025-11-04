@@ -1,19 +1,33 @@
+import 'media_item.dart';
+
 class Artifact {
   final String id;
-  final String code; // Mã hiện vật dùng cho QR code
+  final String code; // artifactCode
   final String name;
   final String description;
   final String imageUrl;
-  final String period;
+  final String period; // periodTime
   final String origin;
   final String material;
   final String category;
   final DateTime discoveryDate;
   final String location;
   final List<String> tags;
-  final String museumId; // ID của bảo tàng
-  final String? area; // Khu vực trưng bày (vd: "Khu A", "Tầng 2")
-  final String? displayPosition; // Vị trí trưng bày cụ thể (vd: "Tủ 1", "Bàn 3")
+  final String museumId;
+  final String? area; // areaName
+  final String? displayPosition; // displayPositionName
+
+  // New fields from API
+  final bool isOriginal;
+  final double? weight;
+  final double? height;
+  final double? width;
+  final double? length;
+  final String status; // OnDisplay, InStorage, etc.
+  final String? areaId;
+  final String? displayPositionId;
+  final DateTime? updatedAt;
+  final List<MediaItem> mediaItems; // NEW
 
   Artifact({
     required this.id,
@@ -31,25 +45,67 @@ class Artifact {
     required this.museumId,
     this.area,
     this.displayPosition,
+    this.isOriginal = true,
+    this.weight,
+    this.height,
+    this.width,
+    this.length,
+    this.status = 'OnDisplay',
+    this.areaId,
+    this.displayPositionId,
+    this.updatedAt,
+    this.mediaItems = const [], // NEW
   });
 
   factory Artifact.fromJson(Map<String, dynamic> json) {
+    // Parse media items
+    List<MediaItem> mediaList = [];
+    if (json['mediaItems'] != null && json['mediaItems'] is List) {
+      mediaList = (json['mediaItems'] as List)
+          .map((item) => MediaItem.fromJson(item))
+          .toList();
+    }
+
+    // Get first image URL from mediaItems or use imageUrl field
+    String imageUrl = json['imageUrl'] ?? '';
+    if (imageUrl.isEmpty && mediaList.isNotEmpty) {
+      final firstImage = mediaList.firstWhere(
+        (item) => item.isImage && item.isActive,
+        orElse: () => mediaList.first,
+      );
+      imageUrl = firstImage.filePath;
+    }
+
     return Artifact(
       id: json['id'] ?? '',
-      code: json['code'] ?? json['id'] ?? '', // Fallback to id if code not provided
+      code: json['artifactCode'] ?? json['id'] ?? '',
       name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      imageUrl: json['imageUrl'] ?? '',
-      period: json['period'] ?? '',
+      description: json['description'] ?? 'Không có mô tả',
+      imageUrl: imageUrl,
+      period: json['periodTime'] ?? '',
       origin: json['origin'] ?? '',
       material: json['material'] ?? '',
       category: json['category'] ?? '',
-      discoveryDate: DateTime.parse(json['discoveryDate'] ?? DateTime.now().toIso8601String()),
+      discoveryDate: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'])
+          : DateTime.now(),
       location: json['location'] ?? '',
       tags: List<String>.from(json['tags'] ?? []),
       museumId: json['museumId'] ?? '',
-      area: json['area'],
-      displayPosition: json['displayPosition'],
+      area: json['areaName'],
+      displayPosition: json['displayPositionName'],
+      isOriginal: json['isOriginal'] ?? true,
+      weight: json['weight']?.toDouble(),
+      height: json['height']?.toDouble(),
+      width: json['width']?.toDouble(),
+      length: json['length']?.toDouble(),
+      status: json['status'] ?? 'OnDisplay',
+      areaId: json['areaId'],
+      displayPositionId: json['displayPositionId'],
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'])
+          : null,
+      mediaItems: mediaList,
     );
   }
 
@@ -73,3 +129,4 @@ class Artifact {
     };
   }
 }
+

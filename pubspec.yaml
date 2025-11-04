@@ -38,6 +38,9 @@ dependencies:
   # QR Code scanning
   ai_barcode_scanner: ^5.1.2
 
+  # QR Code generation
+  qr_flutter: ^4.1.0
+
   # HTTP requests
   http: ^1.1.0
 
@@ -50,8 +53,20 @@ dependencies:
   # Permission handling
   permission_handler: ^11.1.0
 
+  # Shared preferences for storing auth data
+  shared_preferences: ^2.2.2
+
+  # Date formatting
+  intl: ^0.19.0
+
+  # Environment variables
+  flutter_dotenv: ^5.1.0
+
   # Bottom navigation
   persistent_bottom_nav_bar: ^5.0.2
+
+  # Markdown rendering
+  flutter_markdown: ^0.7.4+1
 
 dev_dependencies:
   flutter_test:
@@ -76,7 +91,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
+  assets:
+    - .env
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

@@ -28,9 +28,16 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         if (QRScannerService.isValidQRCode(result)) {
           final artifactCode = QRScannerService.extractArtifactId(result);
 
-          // Lấy thông tin hiện vật từ code (API thật hoặc mock)
-          final artifact = await MuseumService.getMockArtifactByCode(artifactCode);
-          // Khi có API thật, dùng: await MuseumService.getArtifactByCode(artifactCode);
+          // Hiển thị loading
+          if (mounted) {
+            AppUtils.showSnackBar(
+              context,
+              'Đang tìm kiếm hiện vật...',
+            );
+          }
+
+          // Lấy thông tin hiện vật từ API thật
+          final artifact = await MuseumService.getArtifactByCode(artifactCode);
 
           if (artifact != null && mounted) {
             Navigator.push(
@@ -94,7 +101,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Icon(
@@ -163,9 +170,9 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [

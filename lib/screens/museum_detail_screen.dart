@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/museum.dart';
 import '../models/artifact.dart';
-import '../services/museum_service.dart';
+import '../constants/app_constants.dart';
+import '../services/auth_service.dart';
 import 'artifact_detail_screen.dart';
 
 class MuseumDetailScreen extends StatefulWidget {
@@ -17,11 +19,47 @@ class MuseumDetailScreen extends StatefulWidget {
 class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
   List<Artifact> artifacts = [];
   bool isLoading = true;
+  bool isLoadingMuseum = false;
+  final _authService = AuthService();
+  Museum? detailedMuseum;
 
   @override
   void initState() {
     super.initState();
+    detailedMuseum = widget.museum;
+    _loadMuseumDetail();
     _loadArtifacts();
+  }
+
+  Future<void> _loadMuseumDetail() async {
+    setState(() {
+      isLoadingMuseum = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/visitors/museums/${widget.museum.id}'),
+        headers: _authService.getAuthHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['code'] == 200) {
+          final museumData = data['data'];
+          setState(() {
+            detailedMuseum = Museum.fromJson(museumData);
+          });
+        }
+      } else {
+        debugPrint('Failed to load museum detail: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error loading museum detail: $e');
+    } finally {
+      setState(() {
+        isLoadingMuseum = false;
+      });
+    }
   }
 
   Future<void> _loadArtifacts() async {
@@ -30,11 +68,24 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
     });
 
     try {
-      // Load artifacts của bảo tàng này
-      final loadedArtifacts = await MuseumService.getMockArtifactsByMuseumId(widget.museum.id);
-      setState(() {
-        artifacts = loadedArtifacts;
-      });
+      // Load artifacts của bảo tàng này từ API mới
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/visitors/museums/${widget.museum.id}/artifacts?pageIndex=1&pageSize=100'),
+        headers: _authService.getAuthHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['code'] == 200) {
+          final List<dynamic> items = data['data']['items'];
+          final loadedArtifacts = items.map((item) => Artifact.fromJson(item)).toList();
+          setState(() {
+            artifacts = loadedArtifacts;
+          });
+        }
+      } else {
+        debugPrint('Failed to load artifacts: ${response.statusCode}');
+      }
     } catch (e) {
       debugPrint('Error loading artifacts: $e');
     } finally {
@@ -46,257 +97,249 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final museum = detailedMuseum ?? widget.museum;
+
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // App bar with image
-          SliverAppBar(
-            expandedHeight: 300.0,
-            floating: false,
-            pinned: true,
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                widget.museum.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  shadows: [
-                    Shadow(
-                      offset: Offset(0, 1),
-                      blurRadius: 3.0,
-                      color: Colors.black45,
-                    ),
+      appBar: AppBar(
+        title: Text(museum.name),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Colors.white,
+      ),
+      body: isLoadingMuseum
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header với gradient background
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    Colors.white,
                   ],
                 ),
               ),
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CachedNetworkImage(
-                    imageUrl: widget.museum.imageUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey[300],
-                      child: const Icon(
-                        Icons.museum,
-                        size: 100,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ),
-                  // Gradient overlay
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.7),
-                        ],
-                        stops: const [0.5, 1.0],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Content
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Description
-                  _buildSectionTitle(context, 'Giới thiệu'),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[200]!),
-                    ),
-                    child: Text(
-                      widget.museum.description,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        height: 1.6,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Contact info
-                  _buildSectionTitle(context, 'Thông tin liên hệ'),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue[200]!),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDetailRow(
-                          context,
-                          icon: Icons.location_on,
-                          label: 'Địa chỉ:',
-                          value: widget.museum.address,
+                  // Icon và status
+                  Row(
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(height: 12),
-                        _buildDetailRow(
-                          context,
-                          icon: Icons.phone,
-                          label: 'Điện thoại:',
-                          value: widget.museum.phone,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildDetailRow(
-                          context,
-                          icon: Icons.email,
-                          label: 'Email:',
-                          value: widget.museum.email,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildDetailRow(
-                          context,
-                          icon: Icons.access_time,
-                          label: 'Giờ mở cửa:',
-                          value: widget.museum.openingHours,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Tags
-                  if (widget.museum.tags.isNotEmpty) ...[
-                    _buildSectionTitle(context, 'Từ khóa'),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: widget.museum.tags.map((tag) => Chip(
-                        label: Text(tag),
-                        backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                        labelStyle: TextStyle(
+                        child: Icon(
+                          Icons.museum,
+                          size: 32,
                           color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w500,
                         ),
-                      )).toList(),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: museum.isActive
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: museum.isActive
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : Colors.grey.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              size: 8,
+                              color: museum.isActive ? Colors.green : Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              museum.status,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: museum.isActive ? Colors.green : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Museum name
+                  Text(
+                    museum.name,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
 
-                  const SizedBox(height: 24),
-
-                  // Artifacts section
-                  _buildSectionTitle(context, 'Hiện vật (${artifacts.length})'),
                   const SizedBox(height: 12),
 
-                  if (isLoading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: CircularProgressIndicator(),
+                  // Location
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 18,
+                        color: Colors.grey[600],
                       ),
-                    ),
-
-                  if (!isLoading && artifacts.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(32),
-                      alignment: Alignment.center,
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.museum_outlined,
-                            size: 48,
-                            color: Colors.grey[400],
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          museum.location,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey[700],
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Chưa có hiện vật nào',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
+                  ),
 
-                  if (!isLoading && artifacts.isNotEmpty)
-                    ...artifacts.map((artifact) => _buildArtifactCard(artifact)),
+                  const SizedBox(height: 16),
+
+                  // Description
+                  Text(
+                    museum.description,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[800],
+                      height: 1.5,
+                    ),
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    );
-  }
+            const SizedBox(height: 8),
 
-  Widget _buildDetailRow(BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: Colors.blue[700]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: RichText(
-            text: TextSpan(
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.blue[900],
+            // Artifacts section
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.collections, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Hiện vật',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (!isLoading)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${artifacts.length}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Artifacts list or loading
+                  if (isLoading)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (artifacts.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.collections_bookmark_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Chưa có hiện vật nào',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: artifacts.length,
+                      itemBuilder: (context, index) {
+                        final artifact = artifacts[index];
+                        return _buildArtifactCard(artifact);
+                      },
+                    ),
+                ],
               ),
-              children: [
-                TextSpan(
-                  text: '$label ',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                TextSpan(text: value),
-              ],
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildArtifactCard(Artifact artifact) {
+    // Status color
+    Color statusColor;
+    IconData statusIcon;
+    switch (artifact.status) {
+      case 'OnDisplay':
+        statusColor = Colors.green;
+        statusIcon = Icons.visibility;
+        break;
+      case 'InStorage':
+        statusColor = Colors.orange;
+        statusIcon = Icons.inventory_2;
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.help_outline;
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -310,29 +353,23 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: CachedNetworkImage(
-                    imageUrl: artifact.imageUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey[300],
-                      child: const Icon(Icons.museum, color: Colors.grey),
-                    ),
-                  ),
+              // Icon/Image
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.museum,
+                  size: 32,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
+
               const SizedBox(width: 12),
 
               // Content
@@ -340,31 +377,87 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      artifact.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    // Name and status
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            artifact.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: statusColor.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                statusIcon,
+                                size: 10,
+                                color: statusColor,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                artifact.status == 'OnDisplay' ? 'Đang trưng bày' : 'Kho',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      artifact.category,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+
+                    const SizedBox(height: 6),
+
+                    // Period
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            artifact.period,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    if (artifact.area != null)
+
+                    // Display position if available
+                    if (artifact.displayPosition != null) ...[
+                      const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.place, size: 14, color: Colors.grey[600]),
+                          Icon(Icons.place, size: 12, color: Colors.grey[600]),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              artifact.area!,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              '${artifact.area} - ${artifact.displayPosition}',
+                              style: TextStyle(
+                                fontSize: 11,
                                 color: Colors.grey[600],
                               ),
                               maxLines: 1,
@@ -373,16 +466,46 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
                           ),
                         ],
                       ),
+                    ],
+
+                    // Original badge
+                    if (artifact.isOriginal) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.verified,
+                              size: 10,
+                              color: Colors.amber[700],
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Hiện vật gốc',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.amber[800],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
 
-              // Arrow icon
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: Colors.grey[400],
-              ),
+              const SizedBox(width: 8),
+
+              // Arrow
+              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
             ],
           ),
         ),

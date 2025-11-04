@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/museum.dart';
-import '../services/museum_service.dart';
+import '../constants/app_constants.dart';
+import '../services/auth_service.dart';
 import 'museum_detail_screen.dart';
 
 class MuseumsListScreen extends StatefulWidget {
@@ -13,7 +15,11 @@ class MuseumsListScreen extends StatefulWidget {
 
 class _MuseumsListScreenState extends State<MuseumsListScreen> {
   List<Museum> museums = [];
+  List<Museum> filteredMuseums = [];
   bool isLoading = true;
+  final _authService = AuthService();
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -21,17 +27,39 @@ class _MuseumsListScreenState extends State<MuseumsListScreen> {
     _loadMuseums();
   }
 
-  Future<void> _loadMuseums() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMuseums({String? searchName}) async {
     setState(() {
       isLoading = true;
     });
 
     try {
-      // Load mock data - thay bằng API thật khi có backend
-      final loadedMuseums = await MuseumService.getMockMuseums();
-      setState(() {
-        museums = loadedMuseums;
-      });
+      String url = '${AppConstants.baseUrl}/visitors/museums?pageIndex=1&pageSize=100';
+      if (searchName != null && searchName.isNotEmpty) {
+        url += '&museumName=$searchName';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _authService.getAuthHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> items = data['data']['items'];
+        final loadedMuseums = items.map((item) => Museum.fromJson(item)).toList();
+        setState(() {
+          museums = loadedMuseums;
+          filteredMuseums = loadedMuseums;
+        });
+      } else {
+        debugPrint('Failed to load museums: ${response.statusCode}');
+      }
     } catch (e) {
       debugPrint('Error loading museums: $e');
     } finally {
@@ -41,35 +69,82 @@ class _MuseumsListScreenState extends State<MuseumsListScreen> {
     }
   }
 
+  void _filterMuseums(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isEmpty) {
+        filteredMuseums = museums;
+      } else {
+        filteredMuseums = museums
+            .where((museum) =>
+                museum.name.toLowerCase().contains(query.toLowerCase()) ||
+                museum.location.toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Danh sách bảo tàng'),
+        title: const Text('Bảo Tàng'),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMuseums,
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Container(
+            color: Theme.of(context).colorScheme.primary,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterMuseums,
+              decoration: InputDecoration(
+                hintText: 'Tìm kiếm bảo tàng...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _filterMuseums('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+            ),
+          ),
+
+          // Museums list
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : filteredMuseums.isEmpty
+                    ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: () => _loadMuseums(),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: filteredMuseums.length,
+                          itemBuilder: (context, index) {
+                            final museum = filteredMuseums[index];
+                            return _buildMuseumCard(museum);
+                          },
+                        ),
+                      ),
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : museums.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _loadMuseums,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: museums.length,
-                    itemBuilder: (context, index) {
-                      final museum = museums[index];
-                      return _buildMuseumCard(museum);
-                    },
-                  ),
-                ),
     );
   }
 
@@ -79,17 +154,26 @@ class _MuseumsListScreenState extends State<MuseumsListScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.museum_outlined,
+            _searchQuery.isEmpty ? Icons.museum_outlined : Icons.search_off,
             size: 64,
             color: Colors.grey[400],
           ),
           const SizedBox(height: 16),
           Text(
-            'Không có bảo tàng nào',
+            _searchQuery.isEmpty
+                ? 'Không có bảo tàng nào'
+                : 'Không tìm thấy kết quả',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.grey[600],
-            ),
+                  color: Colors.grey[600],
+                ),
           ),
+          if (_searchQuery.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Thử tìm kiếm với từ khóa khác',
+              style: TextStyle(color: Colors.grey[500]),
+            ),
+          ],
         ],
       ),
     );
@@ -98,7 +182,7 @@ class _MuseumsListScreenState extends State<MuseumsListScreen> {
   Widget _buildMuseumCard(Museum museum) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 4,
+      elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
@@ -110,126 +194,117 @@ class _MuseumsListScreenState extends State<MuseumsListScreen> {
           );
         },
         borderRadius: BorderRadius.circular(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Image
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: SizedBox(
-                height: 200,
-                width: double.infinity,
-                child: CachedNetworkImage(
-                  imageUrl: museum.imageUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: Colors.grey[300],
-                    child: const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: Colors.grey[300],
-                    child: const Icon(
-                      Icons.museum,
-                      size: 100,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Content
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with name and status
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Name
-                  Text(
-                    museum.name,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      museum.name,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  // Description
-                  Text(
-                    museum.description,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: museum.isActive
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: museum.isActive
+                            ? Colors.green.withValues(alpha: 0.3)
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Address
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.location_on,
-                        size: 16,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          museum.address,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          size: 8,
+                          color: museum.isActive ? Colors.green : Colors.grey,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Opening hours
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 16,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          museum.openingHours,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
+                        const SizedBox(width: 4),
+                        Text(
+                          museum.status,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: museum.isActive ? Colors.green : Colors.grey,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Tags
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: museum.tags.take(3).map((tag) => Chip(
-                      label: Text(
-                        tag,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                      labelStyle: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                    )).toList(),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+              
+              const SizedBox(height: 12),
+
+              // Location
+              Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      museum.location,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Description
+              Text(
+                museum.description,
+                style: Theme.of(context).textTheme.bodyMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+
+              const SizedBox(height: 12),
+
+              // Action button
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MuseumDetailScreen(museum: museum),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.arrow_forward, size: 16),
+                    label: const Text('Xem chi tiết'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
