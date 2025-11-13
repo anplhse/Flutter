@@ -10,7 +10,28 @@ class MuseumService {
 
   // ==================== ARTIFACT APIs ====================
 
-  // Lấy thông tin hiện vật từ code (được quét từ QR code)
+  // Lấy thông tin hiện vật từ ID
+  static Future<Artifact?> getArtifactById(String artifactId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/visitors/artifacts/$artifactId'),
+        headers: _authService.getAuthHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        if (jsonData['code'] == 200) {
+          return Artifact.fromJson(jsonData['data']);
+        }
+      }
+      debugPrint('Failed to get artifact by ID: ${response.statusCode}');
+    } catch (e) {
+      debugPrint('Error fetching artifact by ID: $e');
+    }
+    return null;
+  }
+
+  // Lấy thông tin hiện vật từ code (được quét từ QR code) - deprecated
   static Future<Artifact?> getArtifactByCode(String artifactCode) async {
     try {
       // Tìm kiếm hiện vật theo artifactCode
@@ -34,26 +55,6 @@ class MuseumService {
       debugPrint('Artifact not found with code: $artifactCode');
     } catch (e) {
       debugPrint('Error fetching artifact by code: $e');
-    }
-    return null;
-  }
-
-  // Lấy thông tin hiện vật từ ID
-  static Future<Artifact?> getArtifactById(String artifactId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('${AppConstants.baseUrl}/visitors/artifacts/$artifactId'),
-        headers: _authService.getAuthHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body);
-        if (jsonData['code'] == 200) {
-          return Artifact.fromJson(jsonData['data']);
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching artifact: $e');
     }
     return null;
   }

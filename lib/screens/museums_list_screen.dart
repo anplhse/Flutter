@@ -181,7 +181,7 @@ class _MuseumsListScreenState extends State<MuseumsListScreen> {
 
   Widget _buildMuseumCard(Museum museum) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 24),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(

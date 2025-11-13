@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/chat_service.dart';
+import '../services/auth_service.dart';
+import '../constants/app_constants.dart';
+import '../models/museum.dart';
+import 'chat_history_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -13,6 +20,92 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+  final _authService = AuthService();
+
+  // Museum selection
+  List<Museum> _museums = [];
+  Museum? _selectedMuseum;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMuseums();
+    _loadChatHistory();
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getString('chat_history');
+
+      if (historyJson != null) {
+        final List<dynamic> historyList = json.decode(historyJson);
+        final loadedMessages = historyList
+            .map((item) => ChatMessage.fromJson(item))
+            .toList();
+
+        setState(() {
+          _messages.clear();
+          _messages.addAll(loadedMessages);
+        });
+      }
+    } catch (e) {
+      // Error loading chat history
+    }
+  }
+
+  Future<void> _saveChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = json.encode(
+        _messages.map((msg) => msg.toJson()).toList(),
+      );
+      await prefs.setString('chat_history', historyJson);
+    } catch (e) {
+      // Error saving chat history
+    }
+  }
+
+  Future<void> _clearChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('chat_history');
+      setState(() {
+        _messages.clear();
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xóa lịch sử chat'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Error clearing chat history
+    }
+  }
+
+  Future<void> _loadMuseums() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/visitors/museums?pageIndex=1&pageSize=100'),
+        headers: _authService.getAuthHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> items = data['data']['items'];
+        final loadedMuseums = items.map((item) => Museum.fromJson(item)).toList();
+        setState(() {
+          _museums = loadedMuseums;
+        });
+      }
+    } catch (e) {
+      // Error loading museums
+    }
+  }
 
   @override
   void dispose() {
@@ -31,6 +124,7 @@ class _ChatScreenState extends State<ChatScreen> {
         text: userMessage,
         isUser: true,
         timestamp: DateTime.now(),
+        museumId: _selectedMuseum?.id, // attach context
       ));
       _messageController.clear();
       _isLoading = true;
@@ -38,7 +132,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Gọi API chat AI
     try {
-      final response = await ChatService.sendMessage(userMessage);
+      final response = await ChatService.sendMessage(
+        userMessage,
+        museumId: _selectedMuseum?.id,
+      );
 
       if (mounted) {
         setState(() {
@@ -46,9 +143,12 @@ class _ChatScreenState extends State<ChatScreen> {
             text: response ?? 'Xin lỗi, tôi không thể trả lời câu hỏi này lúc này. Vui lòng thử lại sau.',
             isUser: false,
             timestamp: DateTime.now(),
+            museumId: _selectedMuseum?.id, // attach context
           ));
           _isLoading = false;
         });
+        // Lưu lịch sử chat
+        _saveChatHistory();
       }
     } catch (e) {
       if (mounted) {
@@ -57,9 +157,12 @@ class _ChatScreenState extends State<ChatScreen> {
             text: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.',
             isUser: false,
             timestamp: DateTime.now(),
+            museumId: _selectedMuseum?.id, // attach context
           ));
           _isLoading = false;
         });
+        // Lưu lịch sử chat
+        _saveChatHistory();
       }
     }
   }
@@ -68,13 +171,146 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chat với AI'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Chat với AI', style: TextStyle(fontSize: 18)),
+            if (_selectedMuseum != null)
+              Text(
+                _selectedMuseum!.name,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              ),
+          ],
+        ),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          // History button
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Lịch sử chat',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatHistoryScreen()),
+              );
+            },
+          ),
+          // Clear history button
+          if (_messages.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              tooltip: 'Xóa lịch sử chat',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Xóa lịch sử chat'),
+                    content: const Text('Bạn có chắc muốn xóa toàn bộ lịch sử chat?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Hủy'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _clearChatHistory();
+                        },
+                        child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          // Museum selector button
+          PopupMenuButton<Museum?>(
+            icon: const Icon(Icons.museum),
+            tooltip: 'Chọn bảo tàng',
+            onSelected: (Museum? museum) {
+              setState(() {
+                _selectedMuseum = museum;
+              });
+              if (museum != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Đã chọn: ${museum.name}'),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return [
+                const PopupMenuItem<Museum?>(
+                  value: null,
+                  child: Row(
+                    children: [
+                      Icon(Icons.clear, size: 20),
+                      SizedBox(width: 8),
+                      Text('Tất cả bảo tàng'),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                ..._museums.map((Museum museum) {
+                  return PopupMenuItem<Museum>(
+                    value: museum,
+                    child: Row(
+                      children: [
+                        Icon(
+                          _selectedMuseum?.id == museum.id
+                              ? Icons.check_circle
+                              : Icons.museum_outlined,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            museum.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ];
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
+          // Museum selection hint
+          if (_selectedMuseum != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Đang chat về: ${_selectedMuseum!.name}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Messages list
           Expanded(
             child: _messages.isEmpty
@@ -185,15 +421,19 @@ class _ChatScreenState extends State<ChatScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 32),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              _buildSuggestChip('Tìm bảo tàng gần đây'),
-              _buildSuggestChip('Hiện vật nổi bật'),
-              _buildSuggestChip('Giờ mở cửa'),
-            ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildSuggestChip('Thông tin bảo tàng'),
+                _buildSuggestChip('List hiện vật'),
+                _buildSuggestChip('Danh sách khu vực'),
+                _buildSuggestChip('Tìm hiện vật theo thời kỳ'),
+              ],
+            ),
           ),
         ],
       ),
@@ -360,11 +600,30 @@ class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final String? museumId; // NEW: tie message to a museum context if any
 
   ChatMessage({
     required this.text,
     required this.isUser,
     required this.timestamp,
+    this.museumId,
   });
-}
 
+  Map<String, dynamic> toJson() {
+    return {
+      'text': text,
+      'isUser': isUser,
+      'timestamp': timestamp.toIso8601String(),
+      'museumId': museumId,
+    };
+  }
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      text: json['text'] as String,
+      isUser: json['isUser'] as bool,
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      museumId: json['museumId'] as String?,
+    );
+  }
+}

@@ -16,6 +16,8 @@ class Artifact {
   final String museumId;
   final String? area; // areaName
   final String? displayPosition; // displayPositionName
+  final String? areaDescription; // NEW - areaDescription
+  final String? displayPositionDescription; // NEW - displayPositionDescription
 
   // New fields from API
   final bool isOriginal;
@@ -45,6 +47,8 @@ class Artifact {
     required this.museumId,
     this.area,
     this.displayPosition,
+    this.areaDescription,
+    this.displayPositionDescription,
     this.isOriginal = true,
     this.weight,
     this.height,
@@ -94,6 +98,8 @@ class Artifact {
       museumId: json['museumId'] ?? '',
       area: json['areaName'],
       displayPosition: json['displayPositionName'],
+      areaDescription: json['areaDescription'],
+      displayPositionDescription: json['displayPositionDescription'],
       isOriginal: json['isOriginal'] ?? true,
       weight: json['weight']?.toDouble(),
       height: json['height']?.toDouble(),

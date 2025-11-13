@@ -35,11 +35,8 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-  # QR Code scanning
-  ai_barcode_scanner: ^5.1.2
-
-  # QR Code generation
-  qr_flutter: ^4.1.0
+  # QR Code - KHÔNG CẦN (đã bỏ hiển thị QR)
+  # qr_flutter: ^4.1.0
 
   # HTTP requests
   http: ^1.1.0

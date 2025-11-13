@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'profile_detail_screen.dart';
+import 'my_ratings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -165,6 +166,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const ProfileDetailScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                _buildMenuItem(
+                  icon: Icons.star_outline,
+                  title: 'Đánh giá của tôi',
+                  subtitle: 'Xem các đánh giá đã gửi',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MyRatingsScreen(),
                       ),
                     );
                   },

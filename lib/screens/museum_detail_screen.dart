@@ -20,8 +20,17 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
   List<Artifact> artifacts = [];
   bool isLoading = true;
   bool isLoadingMuseum = false;
+  bool isLoadingMore = false;
   final _authService = AuthService();
   Museum? detailedMuseum;
+
+  // Pagination variables
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  final int pageSize = 10;
+
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -29,6 +38,12 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
     detailedMuseum = widget.museum;
     _loadMuseumDetail();
     _loadArtifacts();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadMuseumDetail() async {
@@ -50,11 +65,9 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
             detailedMuseum = Museum.fromJson(museumData);
           });
         }
-      } else {
-        debugPrint('Failed to load museum detail: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error loading museum detail: $e');
+      // Error loading museum detail
     } finally {
       setState(() {
         isLoadingMuseum = false;
@@ -65,12 +78,13 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
   Future<void> _loadArtifacts() async {
     setState(() {
       isLoading = true;
+      currentPage = 1;
+      artifacts.clear();
     });
 
     try {
-      // Load artifacts của bảo tàng này từ API mới
       final response = await http.get(
-        Uri.parse('${AppConstants.baseUrl}/visitors/museums/${widget.museum.id}/artifacts?pageIndex=1&pageSize=100'),
+        Uri.parse('${AppConstants.baseUrl}/visitors/museums/${widget.museum.id}/artifacts?pageIndex=$currentPage&pageSize=$pageSize'),
         headers: _authService.getAuthHeaders(),
       );
 
@@ -81,16 +95,57 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
           final loadedArtifacts = items.map((item) => Artifact.fromJson(item)).toList();
           setState(() {
             artifacts = loadedArtifacts;
+            totalPages = data['data']['totalPages'] ?? 1;
+            totalItems = data['data']['totalItems'] ?? 0;
           });
         }
-      } else {
-        debugPrint('Failed to load artifacts: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error loading artifacts: $e');
+      // Error loading artifacts
     } finally {
       setState(() {
         isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadPage(int page) async {
+    if (isLoadingMore || page < 1 || page > totalPages || page == currentPage) return;
+
+    setState(() {
+      isLoadingMore = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/visitors/museums/${widget.museum.id}/artifacts?pageIndex=$page&pageSize=$pageSize'),
+        headers: _authService.getAuthHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['code'] == 200) {
+          final List<dynamic> items = data['data']['items'];
+          final loadedArtifacts = items.map((item) => Artifact.fromJson(item)).toList();
+          setState(() {
+            artifacts = loadedArtifacts; // Replace instead of append
+            currentPage = page;
+          });
+          // Scroll to top of artifact list
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              400, // Scroll to artifacts section
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Error loading page
+    } finally {
+      setState(() {
+        isLoadingMore = false;
       });
     }
   }
@@ -108,23 +163,13 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
       body: isLoadingMuseum
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
+        controller: _scrollController,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header với gradient background
-            Container(
-              width: double.infinity,
+            // Header
+            Padding(
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                    Colors.white,
-                  ],
-                ),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -230,7 +275,6 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
               ),
             ),
 
-            const SizedBox(height: 8),
 
             // Artifacts section
             Padding(
@@ -258,7 +302,7 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            '${artifacts.length}',
+                            '$totalItems',
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.bold,
@@ -302,14 +346,24 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
                       ),
                     )
                   else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: artifacts.length,
-                      itemBuilder: (context, index) {
-                        final artifact = artifacts[index];
-                        return _buildArtifactCard(artifact);
-                      },
+                    Column(
+                      children: [
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: artifacts.length,
+                          itemBuilder: (context, index) {
+                            final artifact = artifacts[index];
+                            return _buildArtifactCard(artifact);
+                          },
+                        ),
+                        // Pagination controls
+                        if (totalPages > 1 && !isLoading)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: _buildPaginationControls(),
+                          ),
+                      ],
                     ),
                 ],
               ),
@@ -320,26 +374,152 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
     );
   }
 
+  Widget _buildPaginationControls() {
+    return Column(
+      children: [
+        // Loading indicator
+        if (isLoadingMore)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: CircularProgressIndicator(),
+          ),
+
+        // Pagination buttons
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Previous button
+            IconButton(
+              onPressed: currentPage > 1 && !isLoadingMore ? () => _loadPage(currentPage - 1) : null,
+              icon: const Icon(Icons.chevron_left),
+              style: IconButton.styleFrom(
+                backgroundColor: currentPage > 1 && !isLoadingMore
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+                    : Colors.grey.withValues(alpha: 0.1),
+                foregroundColor: currentPage > 1 && !isLoadingMore
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.grey,
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            // Page numbers
+            ...List.generate(totalPages, (index) {
+              final pageNum = index + 1;
+
+              // Show first page, last page, current page and adjacent pages
+              if (pageNum == 1 ||
+                  pageNum == totalPages ||
+                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: InkWell(
+                    onTap: !isLoadingMore ? () => _loadPage(pageNum) : null,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: pageNum == currentPage
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: pageNum == currentPage
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey.withValues(alpha: 0.3),
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$pageNum',
+                          style: TextStyle(
+                            color: pageNum == currentPage
+                                ? Colors.white
+                                : Colors.grey[700],
+                            fontWeight: pageNum == currentPage
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              // Show ellipsis
+              if (pageNum == currentPage - 2 || pageNum == currentPage + 2) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text('...', style: TextStyle(color: Colors.grey[600])),
+                );
+              }
+
+              return const SizedBox.shrink();
+            }),
+
+            const SizedBox(width: 8),
+
+            // Next button
+            IconButton(
+              onPressed: currentPage < totalPages && !isLoadingMore ? () => _loadPage(currentPage + 1) : null,
+              icon: const Icon(Icons.chevron_right),
+              style: IconButton.styleFrom(
+                backgroundColor: currentPage < totalPages && !isLoadingMore
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+                    : Colors.grey.withValues(alpha: 0.1),
+                foregroundColor: currentPage < totalPages && !isLoadingMore
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.grey,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // Page info text
+        Text(
+          'Trang $currentPage / $totalPages',
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildArtifactCard(Artifact artifact) {
     // Status color
     Color statusColor;
     IconData statusIcon;
+    String statusText;
     switch (artifact.status) {
       case 'OnDisplay':
         statusColor = Colors.green;
         statusIcon = Icons.visibility;
+        statusText = 'Trưng bày';
         break;
       case 'InStorage':
         statusColor = Colors.orange;
         statusIcon = Icons.inventory_2;
+        statusText = 'Trong kho';
         break;
       default:
         statusColor = Colors.grey;
         statusIcon = Icons.help_outline;
+        statusText = 'Khác';
     }
 
+    // Get first image if available
+    final hasImage = artifact.mediaItems.isNotEmpty;
+    final imageUrl = hasImage ? artifact.mediaItems.first.filePath : null;
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 20),
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -353,20 +533,31 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icon/Image
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
+              // Image or Icon
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 80,
+                  height: 80,
                   color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.museum,
-                  size: 32,
-                  color: Theme.of(context).colorScheme.primary,
+                  child: hasImage && imageUrl != null
+                      ? Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.museum,
+                              size: 32,
+                              color: Theme.of(context).colorScheme.primary,
+                            );
+                          },
+                        )
+                      : Icon(
+                          Icons.museum,
+                          size: 32,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                 ),
               ),
 
@@ -377,45 +568,71 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Name and status
+                    // Name
+                    Text(
+                      artifact.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Period and Status in one row
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            artifact.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                        // Period
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.calendar_today, size: 11, color: Colors.blue[700]),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    artifact.period,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blue[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+
+                        const SizedBox(width: 6),
+
+                        // Status badge
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: statusColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: statusColor.withValues(alpha: 0.3),
-                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                statusIcon,
-                                size: 10,
-                                color: statusColor,
-                              ),
-                              const SizedBox(width: 2),
+                              Icon(statusIcon, size: 11, color: statusColor),
+                              const SizedBox(width: 3),
                               Text(
-                                artifact.status == 'OnDisplay' ? 'Đang trưng bày' : 'Kho',
+                                statusText,
                                 style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
                                   color: statusColor,
                                 ),
                               ),
@@ -427,77 +644,55 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
 
                     const SizedBox(height: 6),
 
-                    // Period
+                    // Area or Original badge
                     Row(
                       children: [
-                        Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            artifact.period,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
+                        if (artifact.area != null)
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.place, size: 11, color: Colors.grey[600]),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    artifact.area!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[600],
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
+
+                        if (artifact.area != null && artifact.isOriginal)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Text('•', style: TextStyle(color: Colors.grey[400])),
+                          ),
+
+                        if (artifact.isOriginal)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.verified, size: 11, color: Colors.amber[700]),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Hiện vật gốc',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.amber[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
-
-                    // Display position if available
-                    if (artifact.displayPosition != null) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.place, size: 12, color: Colors.grey[600]),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              '${artifact.area} - ${artifact.displayPosition}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[600],
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    // Original badge
-                    if (artifact.isOriginal) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.verified,
-                              size: 10,
-                              color: Colors.amber[700],
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              'Hiện vật gốc',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.amber[800],
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -505,7 +700,7 @@ class _MuseumDetailScreenState extends State<MuseumDetailScreen> {
               const SizedBox(width: 8),
 
               // Arrow
-              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+              Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
             ],
           ),
         ),
